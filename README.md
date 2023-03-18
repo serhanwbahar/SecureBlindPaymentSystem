@@ -2,6 +2,8 @@
 
 This secure, anonymous payment system uses blind signatures, RSA, and the Fiat-Shamir heuristic for zero-knowledge proofs to ensure that the payer's identity remains hidden during transactions. The purpose of this system is to enhance the privacy and security of online payments.
 
+* Note that this repo and its documentation are in progress.
+
 ## Why Blind Signatures?
 
 Blind signatures provide a way to create a digital signature for a message without revealing the message's content to the signer. For example, the bank signs the blinded payment message in this system, ensuring it cannot see the transaction details. This helps maintain the payer's anonymity.
