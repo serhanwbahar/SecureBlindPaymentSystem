@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -23,10 +24,18 @@ func createBlindedMessage(pubKey *rsa.PublicKey, message []byte, blindingFactor 
 	if blindingFactor.Cmp(pubKey.N) >= 0 {
 		return nil, errors.New("blinding factor must be smaller than N")
 	}
-	blindedMessage := new(big.Int).Exp(pubKey.E, blindingFactor, pubKey.N)
+	blindedMessage := new(big.Int).Exp(pubKey.N, blindingFactor, pubKey.N) // Fix blinding operation
 	blindedMessage.Mul(blindedMessage, new(big.Int).SetBytes(message))
 	blindedMessage.Mod(blindedMessage, pubKey.N)
 	return blindedMessage, nil
+}
+
+// UnblindSignature unblinds the signature
+func unblindSignature(pubKey *rsa.PublicKey, blindedSignature *big.Int, blindingFactor *big.Int) *big.Int {
+	rInv := new(big.Int).ModInverse(blindingFactor, pubKey.N)
+	unblindedSig := new(big.Int).Mul(blindedSignature, rInv)
+	unblindedSig.Mod(unblindedSig, pubKey.N)
+	return unblindedSig
 }
 
 // Generate a proof using the Fiat-Shamir heuristic
@@ -92,18 +101,18 @@ func main() {
 
 	// Create a blinded payment message
 	blindedMessage, err := createBlindedMessage(bankPubKey, message, blindingFactor)
-		if err != nil {
+	if err != nil {
 		panic(err)
 	}
 
 	// Bank signs the blinded payment message
-	blindedSignature, err := rsa.SignBlindedMessage(bankPrivKey, blindedMessage)
+	blindedSignature, err := bankPrivKey.Sign(rand.Reader, blindedMessage.Bytes(), nil)
 	if err != nil {
 		panic(err)
 	}
 
 	// User unblinds the signature
-	unblindedSignature := rsa.UnblindSignature(bankPubKey, blindedSignature, blindingFactor)
+	unblindedSignature := unblindSignature(bankPubKey, new(big.Int).SetBytes(blindedSignature), blindingFactor)
 
 	// User generates a Fiat-Shamir proof
 	proof, err := generateFiatShamirProof(bankPubKey, message, blindingFactor)
@@ -112,13 +121,12 @@ func main() {
 	}
 
 	// User sends the payment message, the unblinded signature, and the proof to the recipient
-	recipientVerifiesSignature := rsa.VerifySignature(bankPubKey, message, unblindedSignature)
+	recipientVerifiesSignature := rsa.VerifyPKCS1v15(bankPubKey, crypto.SHA256, message, unblindedSignature.Bytes())
 	recipientVerifiesProof := verifyFiatShamirProof(bankPubKey, message, proof)
 
-	if recipientVerifiesSignature && recipientVerifiesProof {
+	if recipientVerifiesSignature == nil && recipientVerifiesProof {
 		fmt.Println("Payment signature and proof verified")
 	} else {
 		fmt.Println("Payment signature or proof invalid")
 	}
 }
-
